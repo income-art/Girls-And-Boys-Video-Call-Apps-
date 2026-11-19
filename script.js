@@ -1,4 +1,3 @@
-
 import { initializeApp } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-app.js";
 
 import {
@@ -14,7 +13,8 @@ import {
   ref,
   update,
   onDisconnect,
-  serverTimestamp
+  serverTimestamp,
+  onValue
 } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-database.js";
 
 
@@ -52,6 +52,14 @@ const userPhoto = document.getElementById("userPhoto");
 const userName = document.getElementById("userName");
 const userEmail = document.getElementById("userEmail");
 
+const activeUsersSection =
+  document.getElementById("activeUsersSection");
+
+const activeUsersList =
+  document.getElementById("activeUsersList");
+
+let stopUsersListener = null;
+
 
 // Show Message
 function showMessage(text) {
@@ -76,20 +84,102 @@ function showUser(user) {
 async function saveUser(user) {
   const userRef = ref(db, "users/" + user.uid);
 
-  // Set Offline when connection closes
   await onDisconnect(userRef).update({
     status: "offline",
     lastSeen: serverTimestamp()
   });
 
-  // Save User Information
   await update(userRef, {
     uid: user.uid,
     name: user.displayName || "User",
-    email: user.email || "",
     photoURL: user.photoURL || "",
+    email: null,
     status: "online",
     lastSeen: serverTimestamp()
+  });
+}
+
+
+// Show Active Users
+function loadActiveUsers(currentUser) {
+  if (stopUsersListener) {
+    stopUsersListener();
+  }
+
+  activeUsersSection.hidden = false;
+  activeUsersList.innerHTML = "<p>Loading users...</p>";
+
+  const usersRef = ref(db, "users");
+
+  stopUsersListener = onValue(usersRef, (snapshot) => {
+    activeUsersList.innerHTML = "";
+
+    if (!snapshot.exists()) {
+      activeUsersList.innerHTML =
+        "<p>No users found.</p>";
+      return;
+    }
+
+    let onlineCount = 0;
+
+    snapshot.forEach((childSnapshot) => {
+      const user = childSnapshot.val();
+
+      if (
+        !user ||
+        childSnapshot.key === currentUser.uid ||
+        user.status !== "online"
+      ) {
+        return;
+      }
+
+      onlineCount++;
+
+      const userCard = document.createElement("div");
+      userCard.className = "active-user";
+
+      const photo = document.createElement("img");
+      photo.src = user.photoURL || "";
+      photo.alt = "User";
+
+      const info = document.createElement("div");
+      info.className = "active-user-info";
+
+      const name = document.createElement("h3");
+      name.textContent = user.name || "User";
+
+      const status = document.createElement("p");
+      status.textContent = "● Online";
+
+      info.appendChild(name);
+      info.appendChild(status);
+
+      const messageBtn = document.createElement("button");
+      messageBtn.className = "message-btn";
+      messageBtn.textContent = "Message";
+
+      messageBtn.addEventListener("click", () => {
+        showMessage(
+          "Chat feature will be added in the next step."
+        );
+      });
+
+      userCard.appendChild(photo);
+      userCard.appendChild(info);
+      userCard.appendChild(messageBtn);
+
+      activeUsersList.appendChild(userCard);
+    });
+
+    if (onlineCount === 0) {
+      activeUsersList.innerHTML =
+        "<p style='text-align:center;color:#cbd5e1;'>No other users online yet.</p>";
+    }
+
+  }, (error) => {
+    console.error("Users Error:", error);
+    activeUsersList.innerHTML =
+      "<p>Unable to load users: " + error.message + "</p>";
   });
 }
 
@@ -109,20 +199,30 @@ googleLoginBtn.addEventListener("click", async () => {
 });
 
 
-// Keep Login Session and Save User
+// Login Session
 onAuthStateChanged(auth, async (user) => {
   if (user) {
     showUser(user);
 
     try {
       await saveUser(user);
+      loadActiveUsers(user);
       showMessage("Login successful! User saved.");
+
     } catch (error) {
       console.error("Database Error:", error);
-      showMessage("Login successful, Database Error: " + error.message);
+      showMessage("Database Error: " + error.message);
     }
 
   } else {
+    if (stopUsersListener) {
+      stopUsersListener();
+      stopUsersListener = null;
+    }
+
+    activeUsersSection.hidden = true;
+    activeUsersList.innerHTML = "";
+
     userInfo.hidden = true;
     googleLoginBtn.style.display = "";
     googleLoginBtn.hidden = false;
@@ -148,7 +248,6 @@ logoutBtn.addEventListener("click", async () => {
     }
 
     await signOut(auth);
-
     showMessage("Logged out successfully.");
 
   } catch (error) {
