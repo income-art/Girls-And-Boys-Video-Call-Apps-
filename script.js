@@ -1,4 +1,3 @@
-
 import { initializeApp } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-app.js";
 
 import {
@@ -109,7 +108,8 @@ async function saveUser(user) {
 }
 
 
-// Open Personal Chat
+
+ // Open Personal Chat
 async function openChat(otherUser) {
   const currentUser = auth.currentUser;
 
@@ -130,83 +130,68 @@ async function openChat(otherUser) {
 
   chatMessages.innerHTML = "<p>Loading messages...</p>";
 
-  const chatRef = ref(db, "chats/" + currentChatId);
+  // Stop previous chat listener
+  if (stopChatListener) {
+    stopChatListener();
+    stopChatListener = null;
+  }
 
-  try {
-    // Register both chat participants
-    await update(chatRef, {
-      members: {
-        [currentUser.uid]: true,
-        [otherUser.uid]: true
-      }
-    });
+  const messagesRef = ref(
+    db,
+    "chats/" + currentChatId + "/messages"
+  );
 
-    // Stop previous chat listener
-    if (stopChatListener) {
-      stopChatListener();
-      stopChatListener = null;
+  stopChatListener = onValue(messagesRef, (snapshot) => {
+    chatMessages.innerHTML = "";
+
+    if (!snapshot.exists()) {
+      chatMessages.innerHTML =
+        "<p style='text-align:center;color:#cbd5e1;'>No messages yet. Say hello!</p>";
+      return;
     }
 
-    const messagesRef = ref(
-      db,
-      "chats/" + currentChatId + "/messages"
-    );
+    snapshot.forEach((child) => {
+      const data = child.val();
 
-    stopChatListener = onValue(messagesRef, (snapshot) => {
-      chatMessages.innerHTML = "";
+      const bubble = document.createElement("div");
 
-      if (!snapshot.exists()) {
-        chatMessages.innerHTML =
-          "<p style='text-align:center;color:#cbd5e1;'>No messages yet. Say hello!</p>";
-        return;
+      bubble.className =
+        "chat-message " +
+        (data.senderId === currentUser.uid
+          ? "my-message"
+          : "other-message");
+
+      const text = document.createElement("span");
+      text.textContent = data.text || "";
+
+      const time = document.createElement("small");
+      time.className = "chat-time";
+
+      if (data.timestamp) {
+        time.textContent = new Date(
+          data.timestamp
+        ).toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit"
+        });
+      } else {
+        time.textContent = "Sending...";
       }
 
-      snapshot.forEach((child) => {
-        const data = child.val();
+      bubble.appendChild(text);
+      bubble.appendChild(time);
 
-        const bubble = document.createElement("div");
-
-        bubble.className =
-          "chat-message " +
-          (data.senderId === currentUser.uid
-            ? "my-message"
-            : "other-message");
-
-        const text = document.createElement("span");
-        text.textContent = data.text || "";
-
-        const time = document.createElement("small");
-        time.className = "chat-time";
-
-        if (data.timestamp) {
-          time.textContent = new Date(
-            data.timestamp
-          ).toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit"
-          });
-        } else {
-          time.textContent = "Sending...";
-        }
-
-        bubble.appendChild(text);
-        bubble.appendChild(time);
-
-        chatMessages.appendChild(bubble);
-      });
-
-      chatMessages.scrollTop = chatMessages.scrollHeight;
-
-    }, (error) => {
-      console.error("Chat Error:", error);
-      chatMessages.textContent = error.message;
+      chatMessages.appendChild(bubble);
     });
 
-  } catch (error) {
-    console.error("Open Chat Error:", error);
-    showMessage("Chat Error: " + error.message);
-  }
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+
+  }, (error) => {
+    console.error("Chat Error:", error);
+    chatMessages.textContent = error.message;
+  });
 }
+
 
 
 // Send Message
