@@ -22,6 +22,12 @@ import {
   orderByChild
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-database.js";
 
+import {
+  getMessaging,
+  getToken,
+  onMessage
+} from "https://www.gstatic.com/firebasejs/12.14.0/firebase-messaging.js";
+
 // Firebase Configuration
 const firebaseConfig = {
   apiKey: "AIzaSyBUcoGR66IPpC0OWfh-HrHa_XqIGSqCEnc",
@@ -39,6 +45,16 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getDatabase(app);
 const provider = new GoogleAuthProvider();
+
+let messaging = null;
+
+try {
+  messaging = getMessaging(app);
+} catch (error) {
+  console.error("Messaging Error:", error);
+}
+
+const vapidKey = "BBy_LuhYDcEJDvx2T82u91iyc3IHCd4C7HozBTJOPw09XayhqnF2o4mLS1BOEKq3pAV39wkEYvCI-yimZXLHheU";
 
 // HTML Elements
 const loginSection = document.getElementById("loginSection");
@@ -58,6 +74,82 @@ let usersListener = null;
 let presenceListener = null;
 let messagesListener = null;
 let currentChatUser = null;
+
+
+// Notification Button
+const profileSection = document.getElementById("profileSection");
+
+const notificationBtn = document.createElement("button");
+notificationBtn.textContent = "🔔 Enable Notifications";
+notificationBtn.style.cssText =
+  "display:block;width:100%;padding:14px;margin:15px 0;background:#1877f2;color:white;border:0;border-radius:10px;font-size:16px;";
+
+if (profileSection) {
+  profileSection.appendChild(notificationBtn);
+}
+
+// Enable Notifications
+notificationBtn.addEventListener("click", async () => {
+  if (!currentUser) {
+    alert("Please login first.");
+    return;
+  }
+
+  try {
+    if (!("Notification" in window)) {
+      alert("This browser does not support notifications.");
+      return;
+    }
+
+    const permission = await Notification.requestPermission();
+
+    if (permission !== "granted") {
+      alert("Notification permission not granted.");
+      return;
+    }
+
+    const swRegistration = await navigator.serviceWorker.register(
+      "/Girls-And-Boys-Video-Call-Apps-/firebase-messaging-sw.js",
+      {
+        scope: "/Girls-And-Boys-Video-Call-Apps-/"
+      }
+    );
+
+    const token = await getToken(messaging, {
+      vapidKey: vapidKey,
+      serviceWorkerRegistration: swRegistration
+    });
+
+    if (!token) {
+      alert("Notification token পাওয়া যায়নি।");
+      return;
+    }
+
+    await update(ref(db, "users/" + currentUser.uid), {
+      fcmToken: token
+    });
+
+    notificationBtn.textContent = "✅ Notifications Enabled";
+    alert("Notifications enabled successfully!");
+
+  } catch (error) {
+    console.error("Notification Error:", error);
+    alert("Notification Error: " + error.message);
+  }
+});
+
+// Foreground Notifications
+if (messaging) {
+  onMessage(messaging, (payload) => {
+    const title = payload.notification?.title || "New Message";
+    const body = payload.notification?.body || "You received a new message!";
+
+    if (Notification.permission === "granted") {
+      new Notification(title, { body: body });
+    }
+  });
+}
+
 
 // Google Login
 googleLoginBtn.addEventListener("click", async () => {
