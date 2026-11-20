@@ -1,4 +1,3 @@
-
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
 
 import {
@@ -74,7 +73,9 @@ let usersListener = null;
 let presenceListener = null;
 let messagesListener = null;
 let currentChatUser = null;
-
+let chatNotificationsListener = null;
+let chatMessageListeners = {};
+let knownMessageIds = {};
 
 // Notification Button
 const profileSection = document.getElementById("profileSection");
@@ -151,6 +152,61 @@ if (messaging) {
 }
 
 
+
+// Listen for New Chat Messages
+function startChatNotifications() {
+  if (!currentUser) return;
+
+  if (chatNotificationsListener) {
+    chatNotificationsListener();
+  }
+
+  const userChatsRef = ref(db, "users/" + currentUser.uid + "/chats");
+
+  chatNotificationsListener = onValue(userChatsRef, (snapshot) => {
+    snapshot.forEach((child) => {
+      const chatId = child.key;
+
+      if (chatMessageListeners[chatId]) return;
+
+      const messagesRef = ref(db, "chats/" + chatId + "/messages");
+
+      chatMessageListeners[chatId] = onValue(messagesRef, (messageSnapshot) => {
+        if (!knownMessageIds[chatId]) {
+          knownMessageIds[chatId] = {};
+          messageSnapshot.forEach((msg) => {
+            knownMessageIds[chatId][msg.key] = true;
+          });
+          return;
+        }
+
+        messageSnapshot.forEach((msg) => {
+          if (knownMessageIds[chatId][msg.key]) return;
+
+          knownMessageIds[chatId][msg.key] = true;
+
+          const message = msg.val();
+
+          if (message.senderId === currentUser.uid) return;
+          if (Notification.permission !== "granted") return;
+
+          navigator.serviceWorker.ready.then((registration) => {
+            registration.showNotification(
+              message.senderName || "New Message",
+              {
+                body: message.text || "You received a new message!",
+                icon: "/Girls-And-Boys-Video-Call-Apps-/favicon.png"
+              }
+            );
+          }).catch(console.error);
+        });
+      });
+    });
+  });
+}
+
+
+
 // Google Login
 googleLoginBtn.addEventListener("click", async () => {
   try {
@@ -224,6 +280,7 @@ onAuthStateChanged(auth, async (user) => {
       await saveUser(user);
       startPresence(user);
       loadActiveUsers();
+startChatNotifications();
 
     } catch (error) {
       console.error(error);
@@ -340,6 +397,31 @@ async function openChat(user) {
 
   currentChatUser = user;
 
+// Video Call Button
+const chatHeader = document.querySelector("#chatSection .chat-header");
+
+let videoCallBtn = document.getElementById("videoCallBtn");
+
+if (!videoCallBtn && chatHeader) {
+  videoCallBtn = document.createElement("button");
+
+  videoCallBtn.id = "videoCallBtn";
+  videoCallBtn.textContent = "📹 Video Call";
+
+  videoCallBtn.style.cssText =
+    "background:#16a34a;color:white;border:0;border-radius:10px;padding:10px 14px;font-size:14px;margin:8px;";
+
+  videoCallBtn.addEventListener("click", () => {
+    if (!currentChatUser) return;
+
+    location.href =
+      "video-call.html?to=" +
+      encodeURIComponent(currentChatUser.uid);
+  });
+
+  chatHeader.appendChild(videoCallBtn);
+}
+
   document.getElementById("activeSection").hidden = true;
   document.getElementById("profileSection").hidden = true;
   document.getElementById("chatSection").hidden = false;
@@ -362,6 +444,10 @@ async function openChat(user) {
       [currentUser.uid]: true,
       [user.uid]: true
     });
+
+await update(ref(db, "users/" + currentUser.uid + "/chats"), {
+  [chatId]: true
+});
 
   } catch (error) {
     console.error(error);
