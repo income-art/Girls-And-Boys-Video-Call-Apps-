@@ -10,35 +10,74 @@
 <body>
 
   <div class="app-container">
-    <div class="login-card">
-      <div class="app-logo">📹</div>
 
-      <h1>Girls And Boys</h1>
-      <p class="subtitle">Video Call Apps</p>
+    <header class="header">
+      <h2>Girls And Boys</h2>
+      <p>Connect with everyone</p>
+    </header>
 
-      <p class="welcome">Welcome!</p>
-      <p class="description">
-        Connect with people and make new friends.
-      </p>
+    <main id="loginSection" class="login-card">
+      <h2>Welcome Back!</h2>
+      <p>Login with your Google Account</p>
 
-      <button id="googleLoginBtn" class="google-btn">
-        <span class="google-icon">G</span>
-        Continue with Google
+      <button id="googleLoginBtn">
+        <span>G</span> Continue with Google
       </button>
 
-      <p id="message" class="message"></p>
+      <p id="loginMessage"></p>
+    </main>
 
-      <div id="userInfo" class="user-info" hidden>
+    <main id="homeSection" hidden>
+      <div class="profile-card">
         <img id="userPhoto" src="" alt="Profile">
         <h3 id="userName"></h3>
         <p id="userEmail"></p>
-        <button id="logoutBtn" class="logout-btn">Logout</button>
+        <button id="logoutBtn">Logout</button>
       </div>
 
-      <p class="footer-text">
-        Secure Login • Easy Connection
-      </p>
+      <nav class="bottom-nav">
+        <button id="activeTab">Active</button>
+        <button id="chatTab">Chat</button>
+        <button id="profileTab">Profile</button>
+      </nav>
+
+      <section id="activeSection">
+        <h3>Active Users</h3>
+        <div id="usersList">Loading users...</div>
+      </section>
+
+      
+<section id="chatSection" hidden>
+  <div class="chat-header">
+    <button id="backToUsers">←</button>
+    <img id="chatUserPhoto" src="" alt="User">
+    <div>
+      <h3 id="chatUserName">Select a User</h3>
+      <p id="chatUserStatus">Personal Chat</p>
     </div>
+  </div>
+
+  <div id="chatList">
+    <p>Select a user to start chatting.</p>
+  </div>
+
+  <div class="chat-input-area">
+    <input
+      type="text"
+      id="messageInput"
+      placeholder="Write a message..."
+    >
+    <button id="sendMessageBtn">Send</button>
+  </div>
+</section>
+
+
+      <section id="profileSection" hidden>
+        <h3>My Profile</h3>
+        <p>Welcome to your profile.</p>
+      </section>
+    </main>
+
   </div>
 
   <script type="module" src="script.js"></script>
