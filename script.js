@@ -1,5 +1,5 @@
 
-import { initializeApp } from "https://www.gstatic.com/firebasejs/13.4.0/firebase-app.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
 
 import {
   getAuth,
@@ -7,7 +7,20 @@ import {
   signInWithPopup,
   onAuthStateChanged,
   signOut
-} from "https://www.gstatic.com/firebasejs/13.4.0/firebase-auth.js";
+} from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
+
+import {
+  getDatabase,
+  ref,
+  update,
+  set,
+  push,
+  onValue,
+  onDisconnect,
+  serverTimestamp,
+  query,
+  orderByChild
+} from "https://www.gstatic.com/firebasejs/12.14.0/firebase-database.js";
 
 // Firebase Configuration
 const firebaseConfig = {
@@ -24,74 +37,387 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+const db = getDatabase(app);
 const provider = new GoogleAuthProvider();
 
-provider.setCustomParameters({
-  prompt: "select_account"
-});
-
 // HTML Elements
+const loginSection = document.getElementById("loginSection");
+const homeSection = document.getElementById("homeSection");
 const googleLoginBtn = document.getElementById("googleLoginBtn");
 const logoutBtn = document.getElementById("logoutBtn");
-const message = document.getElementById("message");
-const userInfo = document.getElementById("userInfo");
+const loginMessage = document.getElementById("loginMessage");
+
 const userPhoto = document.getElementById("userPhoto");
 const userName = document.getElementById("userName");
 const userEmail = document.getElementById("userEmail");
+const usersList = document.getElementById("usersList");
 
-// Show message
-function showMessage(text) {
-  message.textContent = text;
-}
-
-// Show user profile
-
-function showUser(user) {
-  userInfo.hidden = false;
-  googleLoginBtn.style.display = "none";
-
-  userPhoto.src = user.photoURL || "";
-  userName.textContent = user.displayName || "User";
-  userEmail.textContent = user.email || "";
-
-  showMessage("Login successful!");
-}
-
+// Global Variables
+let currentUser = null;
+let usersListener = null;
+let presenceListener = null;
+let messagesListener = null;
+let currentChatUser = null;
 
 // Google Login
-
 googleLoginBtn.addEventListener("click", async () => {
-  showMessage("Connecting to Google...");
-  googleLoginBtn.disabled = true;
-
   try {
+    googleLoginBtn.disabled = true;
+    loginMessage.textContent = "Connecting to Google...";
+
     await signInWithPopup(auth, provider);
+
+    loginMessage.textContent = "Login successful!";
+
   } catch (error) {
     console.error(error);
-    showMessage(error.message);
+    loginMessage.textContent = error.message;
+  } finally {
     googleLoginBtn.disabled = false;
-  }
-});
-
-
-// Keep login session
-onAuthStateChanged(auth, (user) => {
-  if (user) {
-    showUser(user);
-  } else {
-    userInfo.hidden = true;
-    googleLoginBtn.hidden = false;
-    googleLoginBtn.disabled = false;
-    showMessage("");
   }
 });
 
 // Logout
 logoutBtn.addEventListener("click", async () => {
   try {
+    if (currentUser) {
+      const userRef = ref(db, "users/" + currentUser.uid);
+
+      await onDisconnect(userRef).cancel();
+
+      await update(userRef, {
+        online: false,
+        lastSeen: serverTimestamp()
+      });
+    }
+
     await signOut(auth);
-    showMessage("Logged out successfully.");
+
   } catch (error) {
-    showMessage(error.message);
+    console.error(error);
+    alert("Logout Error: " + error.message);
   }
 });
+
+// Authentication State
+onAuthStateChanged(auth, async (user) => {
+  currentUser = user;
+
+  if (presenceListener) {
+    presenceListener();
+    presenceListener = null;
+  }
+
+  if (usersListener) {
+    usersListener();
+    usersListener = null;
+  }
+
+  if (messagesListener) {
+    messagesListener();
+    messagesListener = null;
+  }
+
+  currentChatUser = null;
+
+  if (user) {
+    loginSection.hidden = true;
+    homeSection.hidden = false;
+
+    userPhoto.src = user.photoURL || "";
+    userName.textContent = user.displayName || "User";
+    userEmail.textContent = user.email || "";
+
+    try {
+      await saveUser(user);
+      startPresence(user);
+      loadActiveUsers();
+
+    } catch (error) {
+      console.error(error);
+      alert("Database Error: " + error.message);
+    }
+
+  } else {
+    loginSection.hidden = false;
+    homeSection.hidden = true;
+  }
+});
+
+// Save User Profile
+async function saveUser(user) {
+  const userRef = ref(db, "users/" + user.uid);
+
+  await update(userRef, {
+    uid: user.uid,
+    name: user.displayName || "User",
+    email: user.email || "",
+    photo: user.photoURL || "",
+    online: false,
+    lastSeen: serverTimestamp()
+  });
+}
+
+// Online / Offline System
+function startPresence(user) {
+  const userRef = ref(db, "users/" + user.uid);
+  const connectedRef = ref(db, ".info/connected");
+
+  presenceListener = onValue(connectedRef, async (snapshot) => {
+    if (snapshot.val() !== true) return;
+
+    try {
+      await onDisconnect(userRef).update({
+        online: false,
+        lastSeen: serverTimestamp()
+      });
+
+      await update(userRef, {
+        online: true,
+        lastSeen: serverTimestamp()
+      });
+
+    } catch (error) {
+      console.error("Presence Error:", error);
+    }
+  });
+}
+
+// Load All Users
+function loadActiveUsers() {
+  if (usersListener) usersListener();
+
+  const usersRef = ref(db, "users");
+
+  usersListener = onValue(usersRef, (snapshot) => {
+    usersList.innerHTML = "";
+
+    if (!snapshot.exists()) {
+      usersList.textContent = "No users found.";
+      return;
+    }
+
+    snapshot.forEach((child) => {
+      const user = child.val();
+
+      if (!user.uid) return;
+
+      const card = document.createElement("div");
+
+      card.style.cssText =
+        "display:flex;align-items:center;gap:12px;padding:12px;margin-bottom:10px;background:#f0f2f5;border-radius:10px;";
+
+      const photo = document.createElement("img");
+      photo.src = user.photo || "";
+      photo.alt = "User";
+      photo.style.cssText =
+        "width:48px;height:48px;border-radius:50%;object-fit:cover;";
+
+      const info = document.createElement("div");
+      info.style.flex = "1";
+
+      const name = document.createElement("strong");
+      name.textContent =
+        (user.name || "User") +
+        (user.uid === currentUser?.uid ? " (You)" : "");
+
+      const status = document.createElement("p");
+      status.textContent = user.online ? "🟢 Online" : "⚫ Offline";
+      status.style.cssText = "font-size:12px;margin-top:5px;";
+
+      info.append(name, status);
+      card.append(photo, info);
+
+      // Click Other Users to Open Chat
+      if (user.uid !== currentUser?.uid) {
+        card.style.cursor = "pointer";
+
+        card.addEventListener("click", () => {
+          openChat(user);
+        });
+      }
+
+      usersList.appendChild(card);
+    });
+  });
+}
+
+// Open Personal Chat
+async function openChat(user) {
+  if (!currentUser || user.uid === currentUser.uid) return;
+
+  currentChatUser = user;
+
+  document.getElementById("activeSection").hidden = true;
+  document.getElementById("profileSection").hidden = true;
+  document.getElementById("chatSection").hidden = false;
+
+  document.getElementById("chatUserName").textContent =
+    user.name || user.displayName || user.username || user.email || "User";
+
+  document.getElementById("chatUserPhoto").src =
+    user.photo || "";
+
+  document.getElementById("chatUserStatus").textContent =
+    user.online ? "🟢 Online" : "⚫ Offline";
+
+  const chatId = [currentUser.uid, user.uid].sort().join("_");
+
+  const chatRef = ref(db, "chats/" + chatId);
+
+  try {
+    await update(ref(db, "chats/" + chatId + "/members"), {
+      [currentUser.uid]: true,
+      [user.uid]: true
+    });
+
+  } catch (error) {
+    console.error(error);
+    alert("Chat Error: " + error.message);
+    return;
+  }
+
+  if (messagesListener) {
+    messagesListener();
+    messagesListener = null;
+  }
+
+  const messagesRef = query(
+    ref(db, "chats/" + chatId + "/messages"),
+    orderByChild("timestamp")
+  );
+
+  messagesListener = onValue(messagesRef, (snapshot) => {
+    const chatList = document.getElementById("chatList");
+    chatList.innerHTML = "";
+
+    if (!snapshot.exists()) {
+      chatList.textContent = "No messages yet. Say Hello!";
+      return;
+    }
+
+    snapshot.forEach((child) => {
+      const message = child.val();
+
+      const bubble = document.createElement("div");
+
+      bubble.className =
+        "message " +
+        (message.senderId === currentUser.uid
+          ? "my-message"
+          : "other-message");
+
+      bubble.textContent = message.text || "";
+
+      chatList.appendChild(bubble);
+    });
+
+    chatList.scrollTop = chatList.scrollHeight;
+  });
+}
+
+// Send Message
+async function sendMessage() {
+  if (!currentUser || !currentChatUser) {
+    alert("Please select a user first.");
+    return;
+  }
+
+  const input = document.getElementById("messageInput");
+  const text = input.value.trim();
+
+  if (!text) return;
+
+  const chatId = [
+    currentUser.uid,
+    currentChatUser.uid
+  ].sort().join("_");
+
+  try {
+    const messagesRef = ref(
+      db,
+      "chats/" + chatId + "/messages"
+    );
+
+    const newMessage = push(messagesRef);
+
+    await set(newMessage, {
+      senderId: currentUser.uid,
+      senderName: currentUser.displayName || "User",
+      text: text,
+      timestamp: Date.now()
+    });
+
+    input.value = "";
+    input.focus();
+
+  } catch (error) {
+    console.error(error);
+    alert("Message Error: " + error.message);
+  }
+}
+
+// Send Button
+document.getElementById("sendMessageBtn").addEventListener(
+  "click",
+  sendMessage
+);
+
+// Enter to Send
+document.getElementById("messageInput").addEventListener(
+  "keydown",
+  (event) => {
+    if (event.key === "Enter") {
+      sendMessage();
+    }
+  }
+);
+
+// Back to Active Users
+document.getElementById("backToUsers").addEventListener(
+  "click",
+  () => {
+    if (messagesListener) {
+      messagesListener();
+      messagesListener = null;
+    }
+
+    currentChatUser = null;
+
+    document.getElementById("chatSection").hidden = true;
+    document.getElementById("activeSection").hidden = false;
+  }
+);
+
+// Navigation
+function showSection(section) {
+  if (messagesListener) {
+    messagesListener();
+    messagesListener = null;
+  }
+
+  currentChatUser = null;
+
+  document.getElementById("activeSection").hidden =
+    section !== "active";
+
+  document.getElementById("chatSection").hidden =
+    section !== "chat";
+
+  document.getElementById("profileSection").hidden =
+    section !== "profile";
+}
+
+document.getElementById("activeTab").addEventListener("click", () => {
+  showSection("active");
+});
+
+document.getElementById("chatTab").addEventListener("click", () => {
+  showSection("chat");
+});
+
+document.getElementById("profileTab").addEventListener("click", () => {
+  showSection("profile");
+});
+
+console.log("Girls And Boys Video Call Apps Ready!");
