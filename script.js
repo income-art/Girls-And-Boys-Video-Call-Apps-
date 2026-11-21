@@ -1,3 +1,4 @@
+
 import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-app.js";
 
 import {
@@ -5,7 +6,9 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
   onAuthStateChanged,
-  signOut
+  signOut,
+  setPersistence,
+  browserLocalPersistence
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
 
 import {
@@ -42,6 +45,7 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+await setPersistence(auth, browserLocalPersistence);
 const db = getDatabase(app);
 const provider = new GoogleAuthProvider();
 
