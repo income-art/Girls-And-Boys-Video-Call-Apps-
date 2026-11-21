@@ -3,7 +3,9 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/12.14.0/fireba
 
 import {
   getAuth,
-  onAuthStateChanged
+  onAuthStateChanged,
+  setPersistence,
+  browserLocalPersistence
 } from "https://www.gstatic.com/firebasejs/12.14.0/firebase-auth.js";
 
 import {
@@ -20,7 +22,7 @@ import {
 
 // Firebase Configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyBUcoGR66IPc0OWfh-HrHa_XqIGSqCenc",
+  apiKey: "AIzaSyBUcoGR66IPpC0Wfh-HrHa_XqIGSqCenc",
   authDomain: "girls-and-boys-video-call-apps.firebaseapp.com",
   databaseURL: "https://girls-and-boys-video-call-apps-default-rtdb.asia-southeast1.firebasedatabase.app",
   projectId: "girls-and-boys-video-call-apps",
@@ -31,6 +33,7 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
+await setPersistence(auth, browserLocalPersistence);
 const db = getDatabase(app);
 
 // HTML Elements
