@@ -20,7 +20,7 @@ import {
 
 // Firebase Configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyBUcoGR66IPpC0Wfh-HrHa_XqIGSqCenc",
+  apiKey: "AIzaSyBUcoGR66IPc0OWfh-HrHa_XqIGSqCenc",
   authDomain: "girls-and-boys-video-call-apps.firebaseapp.com",
   databaseURL: "https://girls-and-boys-video-call-apps-default-rtdb.asia-southeast1.firebasedatabase.app",
   projectId: "girls-and-boys-video-call-apps",
